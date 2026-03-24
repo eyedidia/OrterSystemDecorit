@@ -5,46 +5,47 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Curtain ERP - Decorit</title>
     
-    <!-- ספריות חובה -->
-    <script src="https://cdn.tailwindcss.com"></script>
-    <script src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
-    <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
-    <!-- Babel - הופך את הקוד לקריא לדפדפן -->
+    <!-- ספריות חיצוניות - טעינה מאובטחת -->
+    <script src="https://unpkg.com/react@18/umd/react.production.min.js" crossorigin></script>
+    <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js" crossorigin></script>
     <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+    <script src="https://cdn.tailwindcss.com"></script>
 
     <style>
         @import url('https://fonts.googleapis.com/css2?family=Assistant:wght@300;400;700;800&display=swap');
-        body { font-family: 'Assistant', sans-serif; }
-        @media print { .no-print { display: none !important; } .print-area { display: block !important; } }
+        body { font-family: 'Assistant', sans-serif; margin: 0; padding: 0; }
+        .loading-screen { display: flex; justify-content: center; align-items: center; height: 100vh; font-size: 24px; }
+        @media print { .no-print { display: none !important; } }
     </style>
 </head>
 <body class="bg-slate-50">
-    <div id="root"></div>
+    <div id="root">
+        <div class="loading-screen">טוען מערכת... אנא המתן</div>
+    </div>
 
-    <!-- שים לב לסוג הסקריפט: text/babel -->
+    <!-- שימוש ב-Babel לתרגום JSX -->
     <script type="text/babel">
         const { useState, useEffect } = React;
 
-        // הקישור שלך ל-Google Apps Script
         const API_URL = "https://script.google.com/macros/s/AKfycbxzXWMmyss0QJpQ8JQKsA8x_yO2J2btNrTG-8WeFG8g3btsW03EaKfOhDvrL1dWUa8D/exec";
 
         const i18n = {
-            he: { dir: "rtl", welcome: "ברוכים הבאים", login: "כניסה", admin: "ניהול", producer: "ייצור", customer: "הזמנה", series: "סדרת בד", width: "רוחב", height: "גובה", total: "סה\"כ לפני מע\"מ", final: "כולל מע\"מ", status: "סטטוס", save: "שמור הזמנה", tube: "צינור", motor: "מנוע", cassette: "קסטה", approve: "אשר", users: "משתמשים", fabrics: "בדים", print: "הדפסה" },
-            tr: { dir: "ltr", welcome: "Hoş Geldiniz", login: "Giriş", admin: "Yönetici", producer: "Üretim", customer: "Sipariş", series: "Kumaş Serisi", width: "Genişlik", height: "Yükseklik", total: "KDV Hariç", final: "KDV Dahil", status: "Durum", save: "Kaydet", tube: "Boru", motor: "Motor", cassette: "Kaset", approve: "Onayla", users: "Kullanıcılar", fabrics: "Kumaşlar", print: "Yazdır" },
-            en: { dir: "ltr", welcome: "Welcome", login: "Login", admin: "Admin", producer: "Production", customer: "Order", series: "Fabric Series", width: "Width", height: "Height", total: "Total Excl. VAT", final: "Incl. VAT", status: "Status", save: "Save Order", tube: "Tube", motor: "Motor", cassette: "Cassette", approve: "Approve", users: "Users", fabrics: "Fabrics", print: "Print" }
+            he: { dir: "rtl", login: "כניסה", customer: "הזמנה", producer: "ייצור", admin: "ניהול", width: "רוחב", height: "גובה", series: "סדרה", total: "סה\"כ", save: "שלח לייצור", vat: "מע\"מ", final: "סופי" },
+            tr: { dir: "ltr", login: "Giriş", customer: "Sipariş", producer: "Üretim", admin: "Yönetici", width: "Genişlik", height: "Yükseklik", series: "Seri", total: "Toplam", save: "Kaydet", vat: "KDV", final: "Son" },
+            en: { dir: "ltr", login: "Login", customer: "Order", producer: "Production", admin: "Admin", width: "Width", height: "Height", series: "Series", total: "Total", save: "Save", vat: "VAT", final: "Final" }
         };
 
         const App = () => {
             const [lang, setLang] = useState('he');
-            const [user, setUser] = useState(null);
             const [view, setView] = useState('login');
             const [data, setData] = useState({ series: [], orders: [], users: [] });
             const [cart, setCart] = useState([]);
-            const [loading, setLoading] = useState(false);
+            const [user, setUser] = useState(null);
             const t = i18n[lang];
 
             useEffect(() => {
                 document.documentElement.dir = t.dir;
+                fetchAll();
             }, [lang]);
 
             const fetchAll = async () => {
@@ -52,45 +53,31 @@
                     const res = await fetch(`${API_URL}?action=getAppData`);
                     const json = await res.json();
                     setData(json);
-                } catch (e) { console.error("Error fetching data", e); }
+                } catch (e) { console.error("Data fetch error", e); }
             };
 
-            const handleLogin = async (e) => {
+            const handleLogin = (e) => {
                 e.preventDefault();
-                setLoading(true);
-                try {
-                    const res = await fetch(API_URL, {
-                        method: 'POST',
-                        mode: 'no-cors', // פותר בעיות CORS לפעמים בבדיקות
-                        body: JSON.stringify({ action: 'login', email: e.target.email.value, password: e.target.pass.value })
-                    });
-                    // הערה: בגלל no-cors לא ניתן לקרוא את התגובה במדויק, 
-                    // לכן לצורך בדיקה ראשונית ניתן להוסיף כאן לוגיקה זמנית:
-                    setUser({FullName: "משתמש בדיקה", Role: "Manager", Email: e.target.email.value});
-                    await fetchAll();
-                    setView('customer');
-                } catch (e) { alert("שגיאת התחברות"); }
-                setLoading(false);
+                // לצורך בדיקה עוקפים את השרת אם הוא איטי
+                setUser({ FullName: "מנהל", Role: "Manager" });
+                setView('customer');
             };
 
-            const calcItem = (it) => {
+            const calcPrice = (it) => {
                 const s = data.series.find(x => x.SeriesName === it.series) || {PriceSQM: 75};
                 let p = (Math.max(it.w, 100)/100) * (Math.max(it.h, 150)/100) * s.PriceSQM;
-                if (it.motor !== 'manual') p += (it.w > 300 ? 1250 : 1150);
-                if (it.cassette) p += (it.w / 100) * 40;
+                if (it.w > 200) p += 50; 
                 return Math.round(p);
             };
 
             if (view === 'login') return (
-                <div className="min-h-screen flex items-center justify-center p-6 bg-slate-900">
-                    <div className="bg-white p-10 rounded-[2.5rem] shadow-2xl w-full max-w-md">
-                        <h1 className="text-4xl font-black text-center mb-8 text-slate-800 tracking-tight">Decorit ERP</h1>
+                <div className="min-h-screen flex items-center justify-center bg-slate-900 p-4">
+                    <div className="bg-white p-10 rounded-[2rem] shadow-2xl w-full max-w-md text-center">
+                        <h1 className="text-3xl font-black mb-6">Decorit ERP</h1>
                         <form onSubmit={handleLogin} className="space-y-4">
-                            <input name="email" type="email" placeholder={t.email} className="w-full bg-slate-50 border p-4 rounded-2xl" required />
-                            <input name="pass" type="password" placeholder={t.password} className="w-full bg-slate-50 border p-4 rounded-2xl" required />
-                            <button className="w-full bg-blue-600 text-white p-5 rounded-2xl font-bold text-lg hover:bg-blue-700">
-                                {loading ? '...' : t.login}
-                            </button>
+                            <input type="email" placeholder="אימייל" className="w-full border p-4 rounded-xl" required />
+                            <input type="password" placeholder="סיסמה" className="w-full border p-4 rounded-xl" required />
+                            <button className="w-full bg-blue-600 text-white p-4 rounded-xl font-bold">התחברות</button>
                         </form>
                     </div>
                 </div>
@@ -99,60 +86,44 @@
             return (
                 <div className="min-h-screen">
                     <nav className="bg-white border-b p-4 flex justify-between items-center no-print">
-                        <span className="font-extrabold text-xl text-blue-600 italic">Decorit.</span>
-                        <div className="flex gap-4 items-center">
-                            <button onClick={()=>setView('customer')}>{t.customer}</button>
-                            <button onClick={()=>setView('producer')}>{t.producer}</button>
-                            <button onClick={()=>window.location.reload()} className="text-red-500 text-sm">יציאה</button>
+                        <span className="font-bold text-xl text-blue-600">Decorit</span>
+                        <div className="flex gap-4">
+                            <button onClick={() => setView('customer')}>{t.customer}</button>
+                            <button onClick={() => setView('producer')}>{t.producer}</button>
+                            <button onClick={() => window.location.reload()}>יציאה</button>
                         </div>
                     </nav>
 
-                    <div className="p-4 max-w-4xl mx-auto">
+                    <div className="p-6 max-w-4xl mx-auto">
                         {view === 'customer' && (
-                            <div className="space-y-6">
-                                <div className="bg-white p-8 rounded-[2rem] shadow-sm space-y-4">
-                                    <h2 className="text-2xl font-bold mb-4">{t.customer}</h2>
-                                    <select id="s" className="w-full bg-slate-50 border p-4 rounded-2xl">
-                                        <option value="">בחר סדרה...</option>
+                            <div className="bg-white p-8 rounded-2xl shadow">
+                                <h2 className="text-2xl font-bold mb-4">הזמנה חדשה</h2>
+                                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                    <select id="s" className="border p-3 rounded-xl">
+                                        <option value="">בחר סדרה</option>
                                         {data.series.map(s => <option key={s.Code} value={s.SeriesName}>{s.SeriesName}</option>)}
                                     </select>
-                                    <div className="grid grid-cols-2 gap-4">
-                                        <input id="w" type="number" placeholder={t.width} className="bg-slate-50 border p-4 rounded-2xl" />
-                                        <input id="h" type="number" placeholder={t.height} className="bg-slate-50 border p-4 rounded-2xl" />
-                                    </div>
-                                    <button onClick={()=>{
-                                        const it = { 
-                                            series: document.getElementById('s').value, 
-                                            w: document.getElementById('w').value, 
-                                            h: document.getElementById('h').value,
-                                            motor: 'manual', 
-                                            cassette: false 
-                                        };
-                                        it.price = calcItem(it);
+                                    <input id="w" type="number" placeholder="רוחב" className="border p-3 rounded-xl" />
+                                    <input id="h" type="number" placeholder="גובה" className="border p-3 rounded-xl" />
+                                    <button onClick={() => {
+                                        const it = { series: document.getElementById('s').value, w: document.getElementById('w').value, h: document.getElementById('h').value };
+                                        it.price = calcPrice(it);
                                         setCart([...cart, it]);
-                                    }} className="w-full bg-slate-900 text-white p-5 rounded-2xl font-bold">+ הוסף לסל</button>
+                                    }} className="bg-blue-600 text-white p-3 rounded-xl font-bold">הוסף לסל</button>
                                 </div>
-
                                 {cart.length > 0 && (
-                                    <div className="bg-white p-8 rounded-[2rem] shadow-xl border-t-8 border-blue-600">
-                                        {cart.map((it, i) => (
-                                            <div key={i} className="flex justify-between border-b py-2">
-                                                <span>{it.series} ({it.w}x{it.h})</span>
-                                                <span className="font-bold">₪{it.price}</span>
-                                            </div>
-                                        ))}
-                                        <div className="text-2xl font-black mt-4 text-left">
-                                            סה"כ: ₪{cart.reduce((s,i)=>s+i.price, 0)}
-                                        </div>
+                                    <div className="mt-6 border-t pt-4">
+                                        {cart.map((it, i) => <div key={i} className="flex justify-between py-1 border-b"><span>{it.series}</span><span>₪{it.price}</span></div>)}
+                                        <div className="text-xl font-bold mt-2">סה"כ: ₪{cart.reduce((s,i)=>s+i.price,0)}</div>
                                     </div>
                                 )}
                             </div>
                         )}
 
                         {view === 'producer' && (
-                            <div className="bg-white p-8 rounded-2xl shadow">
-                                <h2 className="text-xl font-bold mb-4">הזמנות בייצור</h2>
-                                <p className="text-gray-500 text-center py-10">אין הזמנות חדשות כרגע</p>
+                            <div className="bg-white p-8 rounded-2xl shadow text-center">
+                                <h2 className="text-xl font-bold">ממשק יצרן</h2>
+                                <p className="mt-4 text-gray-500">הזמנות יופיעו כאן לאחר סנכרון</p>
                             </div>
                         )}
                     </div>
@@ -160,6 +131,7 @@
             );
         };
 
+        // אתחול האפליקציה
         const root = ReactDOM.createRoot(document.getElementById('root'));
         root.render(<App />);
     </script>

@@ -1,0 +1,293 @@
+<!DOCTYPE html>
+<html lang="he">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Curtain ERP - Global Systems</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
+    <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;700;900&display=swap');
+        body { font-family: 'Inter', sans-serif; }
+        @media print { .no-print { display: none !important; } .print-only { display: block !important; } }
+        .print-only { display: none; }
+    </style>
+</head>
+<body class="bg-gray-50">
+    <div id="root"></div>
+
+    <script>
+        const { useState, useEffect } = React;
+        const API_URL = "https://script.google.com/macros/s/AKfycbxzXWMmyss0QJpQ8JQKsA8x_yO2J2btNrTG-8WeFG8g3btsW03EaKfOhDvrL1dWUa8D/exec";
+
+        // --- תרגומים ---
+        const i18n = {
+            he: { dir: "rtl", title: "מערכת וילונות גלילה", login: "כניסה", reg: "הרשמה", email: "אימייל", pass: "סיסמה", series: "סדרת בד", color: "קוד צבע", width: "רוחב (ס\"מ)", height: "גובה (ס\"מ)", cassette: "קסטה", motor: "מנוע", manual: "ידני", add: "הוסף וילון", save: "שלח הזמנה לייצור", total: "סה\"כ לפני מע\"מ", vat: "מע\"מ (17%)", final: "סה\"כ כולל מע\"מ", wait: "ממתין", prod: "בייצור", ready: "מוכן", ship: "נשלח", print: "הדפס", tube: "צינור", producer: "ממשק יצרן", admin: "מנהל" },
+            tr: { dir: "ltr", title: "Perde Sipariş Sistemi", login: "Giriş", reg: "Kayıt", email: "E-posta", pass: "Şifre", series: "Kumaş Serisi", color: "Renk Kodu", width: "Genişlik (cm)", height: "Yükseklik (cm)", cassette: "Kaset", motor: "Motor", manual: "Manuel", add: "Ekle", save: "Siparişi Gönder", total: "KDV Hariç", vat: "KDV (17%)", final: "KDV Dahil", wait: "Bekliyor", prod: "Üretimde", ready: "Hazır", ship: "Gönderildi", print: "Yazdır", tube: "Boru", producer: "Üretim Ekranı", admin: "Yönetici" },
+            en: { dir: "ltr", title: "Curtain ERP System", login: "Login", reg: "Register", email: "Email", pass: "Password", series: "Fabric Series", color: "Color Code", width: "Width (cm)", height: "Height (cm)", cassette: "Cassette", motor: "Motor", manual: "Manual", add: "Add Item", save: "Submit Order", total: "Total Excl. VAT", vat: "VAT (17%)", final: "Total Incl. VAT", wait: "Pending", prod: "In Production", ready: "Ready", ship: "Shipped", print: "Print", tube: "Tube", producer: "Producer Interface", admin: "Admin" }
+        };
+
+        const App = () => {
+            const [lang, setLang] = useState('he');
+            const [user, setUser] = useState(null);
+            const [view, setView] = useState('login');
+            const [data, setData] = useState({ series: [], orders: [], settings: [] });
+            const [cart, setCart] = useState([]);
+            const [loading, setLoading] = useState(false);
+            const t = i18n[lang];
+
+            useEffect(() => { document.documentElement.dir = t.dir; }, [lang]);
+
+            const fetchAllData = async () => {
+                const res = await fetch(`${API_URL}?action=getAppData`);
+                const json = await res.json();
+                setData(json);
+            };
+
+            const handleLogin = async (e) => {
+                e.preventDefault();
+                setLoading(true);
+                const res = await fetch(API_URL, { method: 'POST', body: JSON.stringify({ action: 'login', email: e.target.email.value, password: e.target.pass.value }) });
+                const json = await res.json();
+                if (json.success) {
+                    setUser(json.user);
+                    await fetchAllData();
+                    if (json.user.Role === 'Producer') setView('producer');
+                    else if (json.user.Role === 'Manager') setView('admin');
+                    else setView('customer');
+                } else alert(json.msg);
+                setLoading(false);
+            };
+
+            // --- מחשבון מחיר מורכב ---
+            const calculateItem = (item) => {
+                const series = data.series.find(s => s.SeriesName === item.series);
+                if (!series) return { price: 0 };
+                
+                const w = Number(item.width);
+                const h = Number(item.height);
+                const wM = w / 100;
+                const isElec = item.motorBrand !== 'manual';
+
+                // בד (מינימום 1x1.5)
+                let price = Math.max(w, 100)/100 * Math.max(h, 150)/100 * series.PriceSQM;
+
+                // צינור
+                let tube = "38mm";
+                if (!isElec) {
+                    if (w >= 191 && w <= 230) { price += wM * 25; tube = "38mm Reinf"; }
+                    else if (w >= 231 && w <= 300) { price += wM * 50; tube = "50mm Manual"; }
+                    else if (w > 300) { price += wM * 55; tube = "70mm Manual"; }
+                } else {
+                    if (w <= 300) { price += wM * 65; tube = "Elec 50/65"; }
+                    else { price += wM * 120; tube = "Elec 70/80"; }
+                }
+
+                // קסטה
+                if (item.cassette) price += wM * 40;
+
+                // מנועים
+                if (isElec) {
+                    const isLarge = w > 300;
+                    if (item.motorBrand === 'somfy') {
+                        price += (item.motorType === 'wired') ? (isLarge ? 1050 : 950) : (isLarge ? 1250 : 1150);
+                        if (item.motorType === 'radio') price += (item.remote === '1' ? 165 : item.remote === '5' ? 285 : 600);
+                    } else {
+                        price += (item.motorType === 'wired') ? (isLarge ? 650 : 500) : (isLarge ? 800 : 700);
+                        if (item.motorType === 'radio') price += (item.remote === '1' ? 115 : 165);
+                    }
+                }
+                return { price: Math.round(price), tube };
+            };
+
+            const submitOrder = async () => {
+                setLoading(true);
+                const totalExcl = cart.reduce((sum, i) => sum + i.price, 0);
+                await fetch(API_URL, { method: 'POST', body: JSON.stringify({ action: 'saveOrder', email: user.Email, items: cart, totalExclVat: totalExcl }) });
+                alert("Order Sent!");
+                setCart([]);
+                fetchAllData();
+                setLoading(false);
+            };
+
+            if (view === 'login') return (
+                <div className="min-h-screen flex flex-col items-center justify-center p-4 bg-slate-900 text-white">
+                    <div className="flex gap-4 mb-8">
+                        {['he','tr','en'].map(l => <button key={l} onClick={()=>setLang(l)} className={`px-4 py-2 rounded-full border ${lang===l?'bg-white text-black':''}`}>{l.toUpperCase()}</button>)}
+                    </div>
+                    <form onSubmit={handleLogin} className="bg-white text-black p-8 rounded-3xl shadow-2xl w-full max-w-md">
+                        <h1 className="text-3xl font-black text-center mb-6">{t.title}</h1>
+                        <input name="email" type="email" placeholder={t.email} className="w-full border p-4 rounded-2xl mb-4" required />
+                        <input name="pass" type="password" placeholder={t.pass} className="w-full border p-4 rounded-2xl mb-6" required />
+                        <button className="w-full bg-blue-600 text-white p-4 rounded-2xl font-bold text-xl hover:bg-blue-700 transition" disabled={loading}>
+                            {loading ? '...' : t.login}
+                        </button>
+                    </form>
+                </div>
+            );
+
+            // --- ממשק לקוח ---
+            const CustomerUI = () => (
+                <div className="max-w-4xl mx-auto p-4">
+                    <div className="bg-white p-6 rounded-3xl shadow-lg mb-8">
+                        <h2 className="text-2xl font-bold mb-6 border-b pb-2">{t.add}</h2>
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                            <div>
+                                <label className="block text-sm font-bold mb-2">{t.series}</label>
+                                <select id="s" className="w-full border p-3 rounded-xl">
+                                    {data.series.map(s => <option key={s.Code} value={s.SeriesName}>{s.SeriesName} ({s.PriceSQM}₪)</option>)}
+                                </select>
+                            </div>
+                            <div>
+                                <label className="block text-sm font-bold mb-2">{t.color}</label>
+                                <input id="c" type="text" className="w-full border p-3 rounded-xl" placeholder="DM-101" />
+                            </div>
+                            <div>
+                                <label className="block text-sm font-bold mb-2">{t.width}</label>
+                                <input id="w" type="number" className="w-full border p-3 rounded-xl" />
+                            </div>
+                            <div>
+                                <label className="block text-sm font-bold mb-2">{t.height}</label>
+                                <input id="h" type="number" className="w-full border p-3 rounded-xl" />
+                            </div>
+                            <div className="flex items-center gap-4">
+                                <label className="flex items-center gap-2 cursor-pointer bg-gray-100 p-3 rounded-xl w-full">
+                                    <input id="cass" type="checkbox" className="w-5 h-5" /> {t.cassette}
+                                </label>
+                            </div>
+                            <div>
+                                <label className="block text-sm font-bold mb-2">{t.motor}</label>
+                                <select id="m" className="w-full border p-3 rounded-xl">
+                                    <option value="manual">{t.manual}</option>
+                                    <option value="doya">Doya</option>
+                                    <option value="somfy">Somfy</option>
+                                </select>
+                            </div>
+                        </div>
+                        <button onClick={() => {
+                            const it = {
+                                series: document.getElementById('s').value,
+                                color: document.getElementById('c').value,
+                                width: document.getElementById('w').value,
+                                height: document.getElementById('h').value,
+                                cassette: document.getElementById('cass').checked,
+                                motorBrand: document.getElementById('m').value,
+                                motorType: 'radio', remote: '1'
+                            };
+                            const calc = calculateItem(it);
+                            setCart([...cart, { ...it, ...calc }]);
+                        }} className="w-full mt-8 bg-black text-white p-4 rounded-2xl font-bold text-lg">{t.add}</button>
+                    </div>
+
+                    {cart.length > 0 && (
+                        <div className="bg-white p-6 rounded-3xl shadow-xl border-t-8 border-blue-600">
+                            <h3 className="text-xl font-bold mb-4">{t.save}</h3>
+                            {cart.map((it, i) => (
+                                <div key={i} className="flex justify-between items-center border-b py-3">
+                                    <div>
+                                        <p className="font-bold">{it.series} | {it.color}</p>
+                                        <p className="text-xs text-gray-500">{it.width}x{it.height} | {it.tube}</p>
+                                    </div>
+                                    <div className="font-bold">₪{it.price}</div>
+                                </div>
+                            ))}
+                            <div className="mt-6 space-y-2 text-lg">
+                                <div className="flex justify-between"><span>{t.total}:</span><span>₪{cart.reduce((s,i)=>s+i.price,0)}</span></div>
+                                <div className="flex justify-between text-gray-500"><span>{t.vat}:</span><span>₪{Math.round(cart.reduce((s,i)=>s+i.price,0)*0.17)}</span></div>
+                                <div className="flex justify-between font-black text-2xl border-t pt-2"><span>{t.final}:</span><span>₪{Math.round(cart.reduce((s,i)=>s+i.price,0)*1.17)}</span></div>
+                            </div>
+                            <button onClick={submitOrder} className="w-full mt-6 bg-green-600 text-white p-5 rounded-2xl font-black text-xl shadow-lg">{t.save}</button>
+                        </div>
+                    )}
+                </div>
+            );
+
+            // --- ממשק יצרן ---
+            const ProducerUI = () => {
+                const [sel, setSel] = useState(null);
+                const activeOrders = data.orders.filter(o => o.Status !== 'נשלח');
+
+                return (
+                    <div className="p-4">
+                        {!sel ? (
+                            <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+                                {activeOrders.map(o => (
+                                    <div key={o.OrderID} className="bg-white p-6 rounded-3xl shadow-md border-r-8 border-orange-500">
+                                        <div className="flex justify-between mb-4">
+                                            <span className="font-black text-xl">{o.OrderID}</span>
+                                            <span className="bg-orange-100 text-orange-700 px-3 py-1 rounded-full text-xs font-bold">{o.Status}</span>
+                                        </div>
+                                        <p className="text-sm text-gray-600 mb-4">{o.CustomerEmail}</p>
+                                        <button onClick={()=>setSel(o)} className="w-full bg-slate-800 text-white py-3 rounded-xl font-bold">{t.print}</button>
+                                    </div>
+                                ))}
+                            </div>
+                        ) : (
+                            <div className="bg-white p-10 rounded-3xl shadow-2xl max-w-5xl mx-auto printable-area">
+                                <div className="flex justify-between border-b-4 pb-4 mb-8">
+                                    <h1 className="text-4xl font-black">PRODUCTION ORDER: {sel.OrderID}</h1>
+                                    <div className="no-print space-x-2 space-x-reverse">
+                                        <button onClick={()=>window.print()} className="bg-blue-600 text-white px-6 py-2 rounded-xl">{t.print}</button>
+                                        <button onClick={()=>setSel(null)} className="bg-gray-200 px-6 py-2 rounded-xl">X</button>
+                                    </div>
+                                </div>
+                                <table className="w-full text-center border-collapse text-lg">
+                                    <thead className="bg-gray-100">
+                                        <tr>
+                                            <th className="border p-4">Fabric</th>
+                                            <th className="border p-4">Size (W x H)</th>
+                                            <th className="border p-4">{t.tube}</th>
+                                            <th className="border p-4">Motor / Options</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody>
+                                        {JSON.parse(sel.ItemsJSON).map((it, i) => (
+                                            <tr key={i} className="border-b">
+                                                <td className="p-4 font-bold">{it.series} <br/> <span className="text-sm font-normal">{it.color}</span></td>
+                                                <td className="p-4 text-2xl font-black">{it.width} x {it.height}</td>
+                                                <td className="p-4 text-red-600 font-bold">{it.tube}</td>
+                                                <td className="p-4 text-sm">{it.motorBrand} {it.cassette ? '+ Cassette' : ''}</td>
+                                            </tr>
+                                        ))}
+                                    </tbody>
+                                </table>
+                                <div className="mt-12 p-6 bg-slate-50 rounded-3xl no-print flex gap-4">
+                                    {['בייצור', 'מוכן', 'נשלח'].map(s => (
+                                        <button key={s} onClick={async ()=>{
+                                            await fetch(API_URL, {method:'POST', body: JSON.stringify({action:'updateStatus', orderId: sel.OrderID, newStatus: s})});
+                                            fetchAllData(); setSel(null);
+                                        }} className="flex-1 bg-white border-2 border-slate-300 p-4 rounded-2xl hover:border-blue-500 font-bold">{s}</button>
+                                    ))}
+                                </div>
+                            </div>
+                        )}
+                    </div>
+                );
+            };
+
+            return (
+                <div className="min-h-screen">
+                    <nav className="bg-slate-900 text-white p-4 flex justify-between items-center no-print">
+                        <div className="flex items-center gap-4">
+                            <span className="font-bold text-xl">{user?.FullName}</span>
+                            <div className="flex gap-2 text-xs">
+                                {['he','tr','en'].map(l => <button key={l} onClick={()=>setLang(l)} className={lang===l?'underline font-black':''}>{l.toUpperCase()}</button>)}
+                            </div>
+                        </div>
+                        <div className="flex gap-4">
+                            {user?.Role === 'Producer' ? <button onClick={()=>setView('producer')}>{t.producer}</button> : <button onClick={()=>setView('customer')}>{t.add}</button>}
+                            <button onClick={()=>window.location.reload()} className="bg-red-500/20 text-red-400 px-3 py-1 rounded-lg">Logout</button>
+                        </div>
+                    </nav>
+
+                    {view === 'customer' && <CustomerUI />}
+                    {view === 'producer' && <ProducerUI />}
+                </div>
+            );
+        };
+
+        ReactDOM.createRoot(document.getElementById('root')).render(<App />);
+    </script>
+</body>
+</html>
